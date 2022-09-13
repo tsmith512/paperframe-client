@@ -9,9 +9,17 @@ import (
 
 const API_ENDPOINT = "https://paperframe.tsmith.photos/api"
 
+const README = `
+Usage: paperframe <command>
+
+Supported commands:
+  display  Download the current image and display it
+
+`
+
 func main() {
-	if (len(os.Args) == 1) {
-		fmt.Println("What should I do? Options: display")
+	if (len(os.Args) < 2) {
+		fmt.Print(README)
 		return
 	}
 

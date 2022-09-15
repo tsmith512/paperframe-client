@@ -35,8 +35,8 @@ import (
 )
 
 const (
-	EPD_WIDTH  int = 880
-	EPD_HEIGHT int = 528
+	EPD_WIDTH  int = 800
+	EPD_HEIGHT int = 480
 )
 
 const (
@@ -202,7 +202,8 @@ func (e *Epd) sendData(data byte) {
 	e.cs.Out(gpio.High)
 }
 
-func(e *Epd) sendData2(data []byte) {
+// @TODO: This function was in dce's fork but it wasn't in gandalf's original
+func (e *Epd) sendData2(data []byte) {
 	e.dc.Out(gpio.High)
 	e.cs.Out(gpio.Low)
 
@@ -333,6 +334,7 @@ func (e *Epd) Convert(img image.Image) []byte {
 		for i := 0; i < EPD_WIDTH; i++ {
 			bit := bgColor
 
+			// @TODO: I think this is where I need to make changes for a B/W/2-gray...
 			if i < img.Bounds().Dx() && j < img.Bounds().Dy() {
 				bit = color.Palette([]color.Color{color.Black, color.White}).Index(img.At(i, j))
 			}

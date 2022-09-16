@@ -79,6 +79,11 @@ const (
 	VCM_DC_SETTING                 byte = 0x82
 )
 
+// Yanked from the Python example, I don't know what this is yet.
+var VOLTAGE_FRAME_7IN5_V2 = [7]byte{
+	0x6, 0x3F, 0x3F, 0x11, 0x24, 0x7, 0x17,
+}
+
 // Epd is a handle to the display controller.
 type Epd struct {
 	c          conn.Conn
@@ -176,6 +181,7 @@ func New(dcPin, csPin, rstPin, busyPin string) (*Epd, error) {
 }
 
 // Reset can be also used to awaken the device.
+// CHECKED -- epd7in5_V2.py the sleep times are different but these are the pins
 func (e *Epd) Reset() {
 	// log.Println("Reset")
 	e.rst.Out(gpio.High)
@@ -186,6 +192,7 @@ func (e *Epd) Reset() {
 	time.Sleep(200 * time.Millisecond)
 }
 
+// CHECKED -- matches the v2 python
 func (e *Epd) sendCommand(cmd byte) {
 	// log.Println("sendCommand")
 	e.dc.Out(gpio.Low)
@@ -194,6 +201,7 @@ func (e *Epd) sendCommand(cmd byte) {
 	e.cs.Out(gpio.High)
 }
 
+// CHECKED -- matches the v2 python
 func (e *Epd) sendData(data byte) {
 	// log.Println("sendData")
 	e.dc.Out(gpio.High)
@@ -202,7 +210,9 @@ func (e *Epd) sendData(data byte) {
 	e.cs.Out(gpio.High)
 }
 
-// @TODO: This function was in dce's fork but it wasn't in gandalf's original
+// CHECKED -- the v2 python also has a "send_data2" which uses spidev.writebytes2()
+// which works with longer lists and can chunk them by the max block size. Method
+// could also be called "sendLotsOfData" :upside_down_face:
 func (e *Epd) sendData2(data []byte) {
 	e.dc.Out(gpio.High)
 	e.cs.Out(gpio.Low)
@@ -223,6 +233,8 @@ func (e *Epd) sendData2(data []byte) {
 	e.cs.Out(gpio.High)
 }
 
+// CHECKED -- this waits until the busy pin is off. Python polls
+// "while busy == 0" which seems odd
 func (e *Epd) waitUntilIdle() {
 	// log.Println("wait until idle")
 
@@ -232,6 +244,8 @@ func (e *Epd) waitUntilIdle() {
 	}
 }
 
+// NOPE -- This function does not exist in the python version, but also it isn't
+// called within this package or from its usage in the source project.
 func (e *Epd) turnOnDisplay() {
 	e.sendCommand(DISPLAY_REFRESH)
 	time.Sleep(100 * time.Millisecond)
@@ -243,84 +257,99 @@ func (e *Epd) turnOnDisplay() {
 func (e *Epd) Init() {
 	e.Reset()
 
-	e.waitUntilIdle();
-	e.sendCommand(0x12);	// SWRESET
-	e.waitUntilIdle();
+	e.waitUntilIdle()
+	e.sendCommand(POWER_SETTING)
+	e.sendData(0x17)                     // 1-0=11 internal power
+	e.sendData(VOLTAGE_FRAME_7IN5_V2[6]) // VGH&VGL
+	e.sendData(VOLTAGE_FRAME_7IN5_V2[1]) // VSH
+	e.sendData(VOLTAGE_FRAME_7IN5_V2[2]) // VSL
+	e.sendData(VOLTAGE_FRAME_7IN5_V2[3]) // VSHR
+	e.waitUntilIdle()
 
-	e.sendCommand(0x46);	// Auto Write Red RAM
-	e.sendData(0xf7);
-	e.waitUntilIdle();
-	e.sendCommand(0x47);	// Auto Write	B/W RAM
-	e.sendData(0xf7);
-	e.waitUntilIdle();
+	e.sendCommand(VCM_DC_SETTING)
+	e.sendData(VOLTAGE_FRAME_7IN5_V2[0])
+	e.waitUntilIdle()
 
-	e.sendCommand(0x0C);	// Soft start setting
-	e.sendData2([]byte{0xAE, 0xC7, 0xC3, 0xC0, 0x40});
+	e.sendCommand(BOOSTER_SOFT_START)
+	e.sendData(0x27)
+	e.sendData(0x27)
+	e.sendData(0x2F)
+	e.sendData(0x17)
+	e.waitUntilIdle()
 
-	e.sendCommand(0x01);	// Set MUX as 527
-	e.sendData2([]byte{0xAF, 0x02, 0x01});
+	e.sendCommand(PLL_CONTROL)
+	// But the Python called 0x30 "OSC Setting" :thinking_face:
+	e.sendData(VOLTAGE_FRAME_7IN5_V2[0])
+	// 2-0=100: N=4  ; 5-3=111: M=7  ;  3C=50Hz     3A=100HZ
 
-	e.sendCommand(0x11);	// Data entry mode
-	e.sendData(0x01);
-	e.sendCommand(0x44);
-	e.sendData2([]byte{0x00, 0x00, 0x6F, 0x03});
-	e.sendCommand(0x45);
-	e.sendData2([]byte{0xAF, 0x02, 0x00, 0x00});
+	e.sendCommand(POWER_ON)
+	time.Sleep(100 * time.Millisecond)
+	e.waitUntilIdle()
 
-	e.sendCommand(0x3C); // VBD
-	e.sendData(0x05); // LUT1, for white
+	e.sendCommand(PANEL_SETTING)
+	e.sendData(0x3F)
+	// KW-3f   KWR-2F	BWROTP 0f	BWOTP 1f
 
-	e.sendCommand(0x18);
-	e.sendData(0X80);
+	e.sendCommand(TCON_RESOLUTION)
+	e.sendData(0x03) // source 800
+	e.sendData(0x20)
+	e.sendData(0x01) // gate 480
+	e.sendData(0xE0)
 
-	e.sendCommand(0x22);
-	e.sendData(0XB1); // Load Temperature and waveform setting.
-	e.sendCommand(0x20);
-	e.waitUntilIdle();
+	e.sendCommand(0x15) // This one wasn't labeled above...
+	e.sendData(0x00)
 
-	e.sendCommand(0x4E); // set RAM x address count to 0;
-	e.sendData2([]byte{0x00, 0x00});
-	e.sendCommand(0x4F);
-	e.sendData2([]byte{0x00, 0x00});
+	e.sendCommand(VCOM_AND_DATA_INTERVAL_SETTING)
+	e.sendData(0x10)
+	e.sendData(0x07)
+
+	e.sendCommand(TCON_SETTING)
+	e.sendData(0x22)
+
+	e.sendCommand(SPI_FLASH_CONTROL) // But Python called 0x65 "Resolution setting"
+	// And yes, this is exactly what the Python did, with the comment on the 2nd line
+	e.sendData(0x00)
+	e.sendData(0x00) // 800*480
+	e.sendData(0x00)
+	e.sendData(0x00)
+
+	// @TODO: The 7in5v2 codebases have a "SetLUT" transmission in the init functions
+	// that the V1 didn't. Stands for "look up table" to facilitate partial refreshes.
+	// Do I need that if I won't be doing any partial refreshes?
 }
 
 // Clear clears the screen.
+// REWRITTEN to match epd7in5_V2.py. Original V1.go used 0xFF but V2.py used 0x00.
 func (e *Epd) Clear() {
-	bytes := bytes.Repeat([]byte{0xff}, e.heightByte * e.widthByte / 8)
+	bytes := bytes.Repeat([]byte{0x00}, e.heightByte*e.widthByte/8)
 
-	e.sendCommand(0x4F);
-	e.sendData2([]byte{0x00, 0x00});
-	e.sendCommand(0x24);
+	e.sendCommand(DATA_START_TRANSMISSION_1)
 	e.sendData2(bytes)
-	e.sendCommand(0x26)
+	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(bytes)
-	e.sendCommand(0x22);
-	e.sendData(0xF7); // Load LUT from MCU(0x32)
-	e.sendCommand(0x20);
-	time.Sleep(10);
-	e.waitUntilIdle();
+	e.sendCommand(DISPLAY_REFRESH)
+	time.Sleep(10)
+	e.waitUntilIdle()
 }
 
 // Display takes a byte buffer and updates the screen.
+// REWRITTEN to match epd7in5_V2.py
 func (e *Epd) Display(img []byte) {
-	e.sendCommand(0x4F);
-	e.sendData2([]byte{0x00, 0x00});
-	e.sendCommand(0x24);
+	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(img)
-	e.sendCommand(0x22);
-	e.sendData(0xF7); // Load LUT from MCU(0x32)
-	e.sendCommand(0x20);
-	time.Sleep(10);
-	e.waitUntilIdle();
+	e.sendCommand(DISPLAY_REFRESH)
+	time.Sleep(10)
+	e.waitUntilIdle()
 }
 
 // Sleep put the display in power-saving mode.
 // You can use Reset() to awaken and Init() to re-initialize the display.
+// CHECKED -- matches the Python
 func (e *Epd) Sleep() {
 	e.sendCommand(POWER_OFF)
 	e.waitUntilIdle()
 	e.sendCommand(DEEP_SLEEP)
-	e.sendData(0XA5)
+	e.sendData(0xA5)
 }
 
 // Convert converts the input image into a ready-to-display byte buffer.

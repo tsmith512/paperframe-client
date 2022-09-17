@@ -182,9 +182,8 @@ func New(dcPin, csPin, rstPin, busyPin string) (*Epd, error) {
 }
 
 // Reset can be also used to awaken the device.
-// CHECKED -- epd7in5_V2.py the sleep times are different but these are the pins
+// CHECKED -- added additional time
 func (e *Epd) Reset() {
-	// log.Println("Reset")
 	e.rst.Out(gpio.High)
 	time.Sleep(200 * time.Millisecond)
 	e.rst.Out(gpio.Low)
@@ -288,6 +287,7 @@ func (e *Epd) Init() {
 	// But the Python called 0x30 "OSC Setting" :thinking_face:
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[0])
 	// 2-0=100: N=4  ; 5-3=111: M=7  ;  3C=50Hz     3A=100HZ
+	e.waitUntilIdle()
 
 	log.Println("   - Display Power On")
 	e.sendCommand(POWER_ON)
@@ -298,6 +298,7 @@ func (e *Epd) Init() {
 	e.sendCommand(PANEL_SETTING)
 	e.sendData(0x3F)
 	// KW-3f   KWR-2F	BWROTP 0f	BWOTP 1f
+	e.waitUntilIdle()
 
 	log.Println("   - TCON Resolution")
 	e.sendCommand(TCON_RESOLUTION)
@@ -305,14 +306,19 @@ func (e *Epd) Init() {
 	e.sendData(0x20)
 	e.sendData(0x01) // gate 480
 	e.sendData(0xE0)
+	e.waitUntilIdle()
 
+	log.Println("   - 0x15")
 	e.sendCommand(0x15) // This one wasn't labeled above...
 	e.sendData(0x00)
+	e.waitUntilIdle()
 
+	log.Println("   - VCOM and DATA")
 	e.sendCommand(VCOM_AND_DATA_INTERVAL_SETTING)
 	e.sendData(0x10)
 	e.sendData(0x07)
 
+	log.Println("   - TCON Setting")
 	e.sendCommand(TCON_SETTING)
 	e.sendData(0x22)
 
@@ -330,6 +336,7 @@ func (e *Epd) Init() {
 
 // Clear clears the screen.
 // REWRITTEN to match epd7in5_V2.py. Original V1.go used 0xFF but V2.py used 0x00.
+// @TODO: But I think that's wrong, 1 is white... right? Switched it back.
 func (e *Epd) Clear() {
 	bytes := bytes.Repeat([]byte{0x00}, e.heightByte*e.widthByte/8)
 
@@ -338,7 +345,7 @@ func (e *Epd) Clear() {
 	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(bytes)
 	e.sendCommand(DISPLAY_REFRESH)
-	time.Sleep(10)
+	time.Sleep(100 * time.Millisecond)
 	e.waitUntilIdle()
 }
 
@@ -348,7 +355,7 @@ func (e *Epd) Display(img []byte) {
 	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(img)
 	e.sendCommand(DISPLAY_REFRESH)
-	time.Sleep(10)
+	time.Sleep(1 * time.Second)
 	e.waitUntilIdle()
 }
 
@@ -360,6 +367,7 @@ func (e *Epd) Sleep() {
 	e.waitUntilIdle()
 	e.sendCommand(DEEP_SLEEP)
 	e.sendData(0xA5)
+	time.Sleep(2 * time.Second)
 }
 
 // Convert converts the input image into a ready-to-display byte buffer.

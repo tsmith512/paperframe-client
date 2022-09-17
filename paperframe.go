@@ -92,3 +92,15 @@ func displayClear() {
 	log.Println("-> Sleep")
 	epd.Sleep()
 }
+
+func displaySleep() {
+	// @TODO: Could probably abstract this up to the "router" and pass it in
+	// so we only have to define it once.
+	epd, _ := epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
+
+	log.Println("-> Reset")
+	epd.Reset()
+
+	log.Println("-> Sleep")
+	epd.Sleep()
+}

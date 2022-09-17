@@ -23,6 +23,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"log"
 	"time"
 
 	"periph.io/x/conn/v3"
@@ -255,9 +256,11 @@ func (e *Epd) turnOnDisplay() {
 // Init initializes the display config.
 // It should be only used when you put the device to sleep and need to re-init the device.
 func (e *Epd) Init() {
+	log.Println("   - Reset")
 	e.Reset()
-
 	e.waitUntilIdle()
+
+	log.Println("   - Send Power Settings")
 	e.sendCommand(POWER_SETTING)
 	e.sendData(0x17)                     // 1-0=11 internal power
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[6]) // VGH&VGL
@@ -266,10 +269,12 @@ func (e *Epd) Init() {
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[3]) // VSHR
 	e.waitUntilIdle()
 
+	log.Println("   - VCM DC")
 	e.sendCommand(VCM_DC_SETTING)
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[0])
 	e.waitUntilIdle()
 
+	log.Println("   - Booster Soft Start")
 	e.sendCommand(BOOSTER_SOFT_START)
 	e.sendData(0x27)
 	e.sendData(0x27)
@@ -277,19 +282,23 @@ func (e *Epd) Init() {
 	e.sendData(0x17)
 	e.waitUntilIdle()
 
+	log.Println("   - PLL Control")
 	e.sendCommand(PLL_CONTROL)
 	// But the Python called 0x30 "OSC Setting" :thinking_face:
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[0])
 	// 2-0=100: N=4  ; 5-3=111: M=7  ;  3C=50Hz     3A=100HZ
 
+	log.Println("   - Display Power On")
 	e.sendCommand(POWER_ON)
 	time.Sleep(100 * time.Millisecond)
 	e.waitUntilIdle()
 
+	log.Println("   - Panel Setting")
 	e.sendCommand(PANEL_SETTING)
 	e.sendData(0x3F)
 	// KW-3f   KWR-2F	BWROTP 0f	BWOTP 1f
 
+	log.Println("   - TCON Resolution")
 	e.sendCommand(TCON_RESOLUTION)
 	e.sendData(0x03) // source 800
 	e.sendData(0x20)
@@ -363,15 +372,22 @@ func (e *Epd) Convert(img image.Image) []byte {
 		for i := 0; i < EPD_WIDTH; i++ {
 			bit := bgColor
 
-			// @TODO: I think this is where I need to make changes for a B/W/2-gray...
+			// @TODO: I think this is where I need to make changes...
 			if i < img.Bounds().Dx() && j < img.Bounds().Dy() {
+				// So this will pull the closest Black or White, not gray. So my sample
+				// images will end up pretty dark but should work okay for testing.
 				bit = color.Palette([]color.Color{color.Black, color.White}).Index(img.At(i, j))
 			}
 
+			// Haven't quite unpacked this wizardry...
+			// If bit is 1, that should be white...
 			if bit == 1 {
 				byteToSend |= 0x80 >> (uint32(i) % 8)
+				// Compound operator: `x |= y` is the same as `x = x | y`
+				// and the >> is a bitwise right shift
 			}
 
+			// This must be how 7 pixels get packed in a byte
 			if i%8 == 7 {
 				buffer[(i/8)+(j*e.widthByte)] = byteToSend
 				byteToSend = 0x00

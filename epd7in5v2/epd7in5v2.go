@@ -204,7 +204,7 @@ func New(dcPin, csPin, rstPin, busyPin string) (*Epd, error) {
 		return nil, err
 	}
 
-	c, err := port.Connect(5*physic.MegaHertz, spi.Mode0, 8)
+	c, err := port.Connect(4*physic.MegaHertz, spi.Mode0, 8)
 	if err != nil {
 		port.Close()
 		return nil, err

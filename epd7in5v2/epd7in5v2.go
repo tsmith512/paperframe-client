@@ -434,7 +434,7 @@ func (e *Epd) Clear() {
 	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(bytes)
 	e.sendCommand(DISPLAY_REFRESH)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(5 * time.Second)
 	e.waitUntilIdle()
 }
 
@@ -444,7 +444,7 @@ func (e *Epd) Display(img []byte) {
 	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(img)
 	e.sendCommand(DISPLAY_REFRESH)
-	time.Sleep(1 * time.Second)
+	time.Sleep(5 * time.Second)
 	e.waitUntilIdle()
 }
 

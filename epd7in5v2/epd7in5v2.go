@@ -52,7 +52,7 @@ const (
 	DATA_START_TRANSMISSION_1      byte = 0x10
 	DATA_STOP                      byte = 0x11
 	DISPLAY_REFRESH                byte = 0x12
-	IMAGE_PROCESS                  byte = 0x13
+	IMAGE_PROCESS                  byte = 0x13 // This is "Data Transmission 2" -> "NEW" in KW mode, which which we are
 	LUT_FOR_VCOM                   byte = 0x20
 	LUT_BLUE                       byte = 0x21
 	LUT_WHITE                      byte = 0x22
@@ -427,12 +427,14 @@ func (e *Epd) Init() {
 // REWRITTEN to match epd7in5_V2.py. Original V1.go used 0xFF but V2.py used 0x00.
 // @TODO: But I think that's wrong, 1 is white... right? Switched it back.
 func (e *Epd) Clear() {
-	bytes := bytes.Repeat([]byte{0x00}, e.heightByte*e.widthByte/8)
+	bytes := bytes.Repeat([]byte{0x00}, e.heightByte*e.widthByte)
 
 	e.sendCommand(DATA_START_TRANSMISSION_1)
 	e.sendData2(bytes)
+	e.sendCommand(DATA_STOP)
 	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(bytes)
+	e.sendCommand(DATA_STOP)
 	e.sendCommand(DISPLAY_REFRESH)
 	time.Sleep(5 * time.Second)
 	e.waitUntilIdle()
@@ -443,6 +445,7 @@ func (e *Epd) Clear() {
 func (e *Epd) Display(img []byte) {
 	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(img)
+	e.sendCommand(DATA_STOP)
 	e.sendCommand(DISPLAY_REFRESH)
 	time.Sleep(5 * time.Second)
 	e.waitUntilIdle()
@@ -474,7 +477,7 @@ func (e *Epd) Convert(img image.Image) []byte {
 			if i < img.Bounds().Dx() && j < img.Bounds().Dy() {
 				// So this will pull the closest Black or White, not gray. So my sample
 				// images will end up pretty dark but should work okay for testing.
-				bit = color.Palette([]color.Color{color.Black, color.White}).Index(img.At(i, j))
+				bit = color.Palette([]color.Color{color.White, color.Black}).Index(img.At(i, j))
 			}
 
 			// Haven't quite unpacked this wizardry...

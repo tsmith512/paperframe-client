@@ -236,12 +236,13 @@ func (e *Epd) sendData2(data []byte) {
 
 // CHECKED -- this waits until the busy pin is off. Python polls
 // "while busy == 0" which seems odd
+// Per https://forum.micropython.org/viewtopic.php?t=10253, busy = 0, idle = 1
 func (e *Epd) waitUntilIdle() {
-	// log.Println("wait until idle")
+	log.Println("     - Waiting for idle")
 
-	for e.busy.Read() == gpio.High {
-		// log.Println("waiting...")
-		time.Sleep(100 * time.Millisecond)
+	for e.busy.Read() == gpio.Low {
+		log.Println("       Still waiting...")
+		time.Sleep(1000 * time.Millisecond)
 	}
 }
 

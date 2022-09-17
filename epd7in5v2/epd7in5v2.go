@@ -5,6 +5,8 @@
 // - https://github.com/waveshare/e-Paper/blob/master/RaspberryPi_JetsonNano/c/lib/e-Paper/EPD_7in5_V2.c
 // - https://github.com/waveshare/e-Paper/blob/master/RaspberryPi_JetsonNano/c/examples/EPD_7in5_V2_test.c
 //
+// And device spec: https://www.waveshare.com/w/upload/6/60/7.5inch_e-Paper_V2_Specification.pdf
+//
 // The GPIO and SPI communication is handled by the awesome Periph.io package;
 // no CGO or other dependecy needed.
 //
@@ -53,6 +55,7 @@ const (
 	DATA_STOP                      byte = 0x11
 	DISPLAY_REFRESH                byte = 0x12
 	IMAGE_PROCESS                  byte = 0x13 // This is "Data Transmission 2" -> "NEW" in KW mode, which which we are
+	DUAL_SPI_MODE                  byte = 0x15
 	LUT_FOR_VCOM                   byte = 0x20
 	LUT_BLUE                       byte = 0x21
 	LUT_WHITE                      byte = 0x22
@@ -72,7 +75,7 @@ const (
 	LOW_POWER_DETECTION            byte = 0x51
 	TCON_SETTING                   byte = 0x60
 	TCON_RESOLUTION                byte = 0x61
-	SPI_FLASH_CONTROL              byte = 0x65
+	SPI_FLASH_CONTROL              byte = 0x65 // This is "Gate/Source Start Setting"
 	REVISION                       byte = 0x70
 	GET_STATUS                     byte = 0x71
 	AUTO_MEASUREMENT_VCOM          byte = 0x80
@@ -181,8 +184,7 @@ func New(dcPin, csPin, rstPin, busyPin string) (*Epd, error) {
 	return e, nil
 }
 
-// Reset can be also used to awaken the device.
-// CHECKED -- added additional time
+// Reset / Wake Up
 func (e *Epd) Reset() {
 	e.rst.Out(gpio.High)
 	time.Sleep(200 * time.Millisecond)
@@ -192,16 +194,15 @@ func (e *Epd) Reset() {
 	time.Sleep(200 * time.Millisecond)
 }
 
-// CHECKED -- matches the v2 python
+// Send Command Byte
 func (e *Epd) sendCommand(cmd byte) {
-	// log.Println("sendCommand")
 	e.dc.Out(gpio.Low)
 	e.cs.Out(gpio.Low)
 	e.c.Tx([]byte{cmd}, nil)
 	e.cs.Out(gpio.High)
 }
 
-// CHECKED -- matches the v2 python
+// Send Data Byte, one at a time
 func (e *Epd) sendData(data byte) {
 	// log.Println("sendData")
 	e.dc.Out(gpio.High)
@@ -210,9 +211,8 @@ func (e *Epd) sendData(data byte) {
 	e.cs.Out(gpio.High)
 }
 
-// CHECKED -- the v2 python also has a "send_data2" which uses spidev.writebytes2()
-// which works with longer lists and can chunk them by the max block size. Method
-// could also be called "sendLotsOfData" :upside_down_face:
+// Send Data Bytearray, chunked by block.
+// (Useful for large payloads. See Python dev examples and spidev.writebytes2())
 func (e *Epd) sendData2(data []byte) {
 	e.dc.Out(gpio.High)
 	e.cs.Out(gpio.Low)
@@ -233,9 +233,7 @@ func (e *Epd) sendData2(data []byte) {
 	e.cs.Out(gpio.High)
 }
 
-// CHECKED -- this waits until the busy pin is off. Python polls
-// "while busy == 0" which seems odd
-// Per https://forum.micropython.org/viewtopic.php?t=10253, busy = 0, idle = 1
+// Pause until display is ready. NB: busy pin is _high_ when idle!
 func (e *Epd) waitUntilIdle() {
 	log.Println("     - Waiting for idle")
 
@@ -245,16 +243,7 @@ func (e *Epd) waitUntilIdle() {
 	}
 }
 
-// NOPE -- This function does not exist in the python version, but also it isn't
-// called within this package or from its usage in the source project.
-func (e *Epd) turnOnDisplay() {
-	e.sendCommand(DISPLAY_REFRESH)
-	time.Sleep(100 * time.Millisecond)
-	e.waitUntilIdle()
-}
-
-// Init initializes the display config.
-// It should be only used when you put the device to sleep and need to re-init the device.
+// Init and power on display from sleep.
 func (e *Epd) Init() {
 	log.Println("   - Reset")
 	e.Reset()
@@ -284,9 +273,8 @@ func (e *Epd) Init() {
 
 	log.Println("   - PLL Control")
 	e.sendCommand(PLL_CONTROL)
-	// But the Python called 0x30 "OSC Setting" :thinking_face:
-	e.sendData(VOLTAGE_FRAME_7IN5_V2[0])
-	// 2-0=100: N=4  ; 5-3=111: M=7  ;  3C=50Hz     3A=100HZ
+	// Python example called 0x30 "OSC Setting" but it is the PLL clock freq.
+	e.sendData(VOLTAGE_FRAME_7IN5_V2[0]) // 0110 = 50Hz.
 	e.waitUntilIdle()
 
 	log.Println("   - Display Power On")
@@ -296,21 +284,26 @@ func (e *Epd) Init() {
 
 	log.Println("   - Panel Setting")
 	e.sendCommand(PANEL_SETTING)
-	e.sendData(0x1F) // LUT from OTP so we don't have to send it, KW mode
-	// KW-3f   KWR-2F	BWROTP 0f	BWOTP 1f
+	e.sendData(0x1F)
+	// 0 0 0 1 1 1 1 1
+	//     * LUT from OTP so we don't have to send it
+	//       * K/W Mode (i.e. black and white, this isn't a red-capable panel)
+	//         * * * * Default values
 	e.waitUntilIdle()
 
-	log.Println("   - TCON Resolution")
+	log.Println("   - Resolution Setting")
 	e.sendCommand(TCON_RESOLUTION)
-	e.sendData(0x03) // source 800
+	e.sendData(0x03)
 	e.sendData(0x20)
-	e.sendData(0x01) // gate 480
+	e.sendData(0x01)
 	e.sendData(0xE0)
+	// Not sure how 800x480 is encoded described in this.
 	e.waitUntilIdle()
 
-	log.Println("   - 0x15")
-	e.sendCommand(0x15) // This one wasn't labeled above...
+	log.Println("   - Set Dual SPI Mode")
+	e.sendCommand(DUAL_SPI_MODE)
 	e.sendData(0x00)
+	// Set as DISABLED
 	e.waitUntilIdle()
 
 	log.Println("   - VCOM and DATA")
@@ -324,9 +317,10 @@ func (e *Epd) Init() {
 	e.sendData(0x22)
 	e.waitUntilIdle()
 
-	log.Println("   - SPI Flash Control")
+	log.Println("   - Gate/Source Start Setting")
 	e.sendCommand(SPI_FLASH_CONTROL) // But Python called 0x65 "Resolution setting"
 	// And yes, this is exactly what the Python did, with the comment on the 2nd line
+	// I think this is related to rotation...
 	e.sendData(0x00)
 	e.sendData(0x00) // 800*480
 	e.sendData(0x00)
@@ -335,12 +329,10 @@ func (e *Epd) Init() {
 	log.Println("   Init Complete")
 }
 
-// Clear clears the screen.
-// REWRITTEN to match epd7in5_V2.py. Original V1.go used 0xFF but V2.py used 0x00.
-// @TODO: But I think that's wrong, 1 is white... right? Switched it back.
+// Clears the screen to white.
+// @TODO: Per the docs, 0=black, 1=white, but this works: 0 is white. :confused:
 func (e *Epd) Clear() {
 	bytes := bytes.Repeat([]byte{0x00}, e.heightByte*e.widthByte)
-
 	e.sendCommand(DATA_START_TRANSMISSION_1)
 	e.sendData2(bytes)
 	e.sendCommand(DATA_STOP)
@@ -352,8 +344,7 @@ func (e *Epd) Clear() {
 	e.waitUntilIdle()
 }
 
-// Display takes a byte buffer and updates the screen.
-// REWRITTEN to match epd7in5_V2.py
+// Paint a prepared bitmap in a bytearray to the screen.
 func (e *Epd) Display(img []byte) {
 	e.sendCommand(IMAGE_PROCESS)
 	e.sendData2(img)
@@ -363,9 +354,8 @@ func (e *Epd) Display(img []byte) {
 	e.waitUntilIdle()
 }
 
-// Sleep put the display in power-saving mode.
-// You can use Reset() to awaken and Init() to re-initialize the display.
-// CHECKED -- matches the Python
+// Sleep the display in power-saving mode.
+// Use Init() to wake up and initialize the display.
 func (e *Epd) Sleep() {
 	e.sendCommand(POWER_OFF)
 	e.waitUntilIdle()
@@ -374,33 +364,35 @@ func (e *Epd) Sleep() {
 	time.Sleep(2 * time.Second)
 }
 
-// Convert converts the input image into a ready-to-display byte buffer.
+// Convert the input image into bitmap as a ready-to-display B&W bytearray.
+// @TODO: Per the docs, 0=black, 1=white, but this works: 0 is white. :confused:
 func (e *Epd) Convert(img image.Image) []byte {
 	var byteToSend byte = 0x00
 	var bgColor = 1
 
 	buffer := bytes.Repeat([]byte{0x00}, e.widthByte*e.heightByte)
 
+	// Iterate through individual device pixel coords by col within row:
 	for j := 0; j < EPD_HEIGHT; j++ {
 		for i := 0; i < EPD_WIDTH; i++ {
 			bit := bgColor
 
-			// @TODO: I think this is where I need to make changes...
+			// Check that the device pixel we're on is within the image canvas
 			if i < img.Bounds().Dx() && j < img.Bounds().Dy() {
-				// So this will pull the closest Black or White, not gray. So my sample
-				// images will end up pretty dark but should work okay for testing.
+				// I flipped this from the original Go pallete. This uses [white=0, black=1]
+				// because images were inverted. Something is getting inverted somewhere...
 				bit = color.Palette([]color.Color{color.White, color.Black}).Index(img.At(i, j))
 			}
 
-			// Haven't quite unpacked this wizardry...
-			// If bit is 1, that should be white...
+			// These two statements do a bitwise shift and OR to pack 8 pixels (as
+			// individual bits) into a single byte to send to the display.
 			if bit == 1 {
 				byteToSend |= 0x80 >> (uint32(i) % 8)
 				// Compound operator: `x |= y` is the same as `x = x | y`
 				// and the >> is a bitwise right shift
 			}
 
-			// This must be how 7 pixels get packed in a byte
+			// If we're on the last pixel in a byte, save the byte and move on
 			if i%8 == 7 {
 				buffer[(i/8)+(j*e.widthByte)] = byteToSend
 				byteToSend = 0x00

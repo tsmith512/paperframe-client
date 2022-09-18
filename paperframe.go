@@ -4,6 +4,8 @@ import (
 	"tsmith512/epd7in5v2"
 
 	"fmt"
+	"image"
+	"image/gif"
 	"image/jpeg"
 	"log"
 	"net/http"
@@ -39,17 +41,32 @@ func main() {
 }
 
 func displayCurrentPhoto() {
-	// Get the current photo
+	// Get the current photo from the Worker service
 	data, err := http.Get(API_ENDPOINT + "/now/image")
 
 	if err != nil || data.StatusCode != 200 {
+		log.Println("Unable to fetch current image")
 		log.Printf("%#v\n", err)
 		return
 	}
 
-	image, err := jpeg.Decode(data.Body)
-	if err != nil {
-		log.Printf("Error decoding JPEG: %s", err)
+	var image image.Image
+
+	switch data.Header.Get("Content-Type") {
+	case "image/gif":
+		image, err = gif.Decode(data.Body)
+		if err != nil {
+			log.Printf("Error decoding GIF: %s", err)
+			return
+		}
+	case "image/jpg", "image/jpeg":
+		image, err = jpeg.Decode(data.Body)
+		if err != nil {
+			log.Printf("Error decoding GIF: %s", err)
+			return
+		}
+	default:
+		log.Printf("Unable to determine image type")
 		return
 	}
 

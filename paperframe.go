@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"tsmith512/epd7in5v2"
 
 	"fmt"
@@ -19,8 +21,9 @@ const README = `
 Usage: paperframe <command>
 
 Supported commands:
-  display  Download the current image and display it
-  clear    Wipe the screen
+  clear        Clear the screen to white
+  current      Download the current image and display it
+	display [id] Download a specific image ID and display it
 
 `
 
@@ -30,46 +33,99 @@ func main() {
 		return
 	}
 
-	cmd := os.Args[1]
-
-	switch cmd {
-	case "display":
-		displayCurrentPhoto()
+	switch os.Args[1] {
 	case "clear":
 		displayClear()
+		return
+
+	case "current":
+		image, err := getCurrentImage()
+		if err != nil {
+			return
+		}
+
+		displayImage(image)
+		return
+
+	case "display":
+		if len(os.Args) < 3 {
+			fmt.Print("Missing argument: display requires id")
+			return
+		}
+		id := os.Args[2]
+
+		image, err := getImageById(id)
+		if err != nil {
+			return
+		}
+
+		displayImage(image)
+		return
 	}
 }
 
-func displayCurrentPhoto() {
-	// Get the current photo from the Worker service
+// Fetch and decode the image that is currently set to active
+func getCurrentImage() (image.Image, error) {
 	data, err := http.Get(API_ENDPOINT + "/now/image")
 
 	if err != nil || data.StatusCode != 200 {
 		log.Println("Unable to fetch current image")
 		log.Printf("%#v\n", err)
-		return
+		return nil, errors.New("Unable to fetch current image")
 	}
 
-	var image image.Image
+	image, err := decodeImage(data.Body, data.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, err
+	} else {
+		return image, nil
+	}
+}
 
-	switch data.Header.Get("Content-Type") {
+// Fetch and decode a specific image given its ID
+func getImageById(id string) (image.Image, error) {
+	data, err := http.Get(API_ENDPOINT + "/image/" + id)
+
+	if err != nil || data.StatusCode != 200 {
+		log.Println("Unable to fetch current image")
+		log.Printf("%#v\n", err)
+		return nil, errors.New("Unable to fetch current image")
+	}
+
+	image, err := decodeImage(data.Body, data.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, err
+	} else {
+		return image, nil
+	}
+}
+
+// Decode GIF or JPEG image given a mimeType
+func decodeImage(data io.Reader, mimeType string) (image.Image, error) {
+	switch mimeType {
 	case "image/gif":
-		image, err = gif.Decode(data.Body)
+		image, err := gif.Decode(data)
 		if err != nil {
 			log.Printf("Error decoding GIF: %s", err)
-			return
+			return nil, err
 		}
+		return image, nil
+
 	case "image/jpg", "image/jpeg":
-		image, err = jpeg.Decode(data.Body)
+		image, err := jpeg.Decode(data)
 		if err != nil {
 			log.Printf("Error decoding GIF: %s", err)
-			return
+			return nil, err
 		}
+		return image, nil
+
 	default:
 		log.Printf("Unable to determine image type")
-		return
+		return nil, errors.New("Unable to determine the image type")
 	}
+}
 
+func displayImage(image image.Image) {
 	// @TODO: This is a weird place to check for this... move it eventually
 	if runtime.GOARCH != "arm" {
 		log.Println("Not running on compatible hardware")

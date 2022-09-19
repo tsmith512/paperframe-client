@@ -23,7 +23,7 @@ Usage: paperframe <command>
 Supported commands:
   clear        Clear the screen to white
   current      Download the current image and display it
-	display [id] Download a specific image ID and display it
+  display [id] Download a specific image ID and display it
 
 `
 

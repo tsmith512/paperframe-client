@@ -81,7 +81,8 @@ func getCurrentImage() (image.Image, error) {
 
 	if err != nil || data.StatusCode != 200 {
 		log.Println("Unable to fetch current image")
-		log.Printf("%#v\n", err)
+		log.Printf("Error: %#v\n", err)
+		log.Printf("HTTP Status: %s\n", data.Request.Response.Status)
 		return nil, errors.New("Unable to fetch current image")
 	}
 
@@ -98,8 +99,9 @@ func getImageById(id string) (image.Image, error) {
 	data, err := http.Get(API_ENDPOINT + "/image/" + id)
 
 	if err != nil || data.StatusCode != 200 {
-		log.Println("Unable to fetch current image")
-		log.Printf("%#v\n", err)
+		log.Printf("Unable to fetch image by id: %s", id)
+		log.Printf("Error: %#v\n", err)
+		log.Printf("HTTP Status: %s\n", data.Request.Response.Status)
 		return nil, errors.New("Unable to fetch current image")
 	}
 
@@ -160,6 +162,12 @@ func displayImage(image image.Image) {
 }
 
 func displayClear() {
+	// @TODO: This is a weird place to check for this... move it eventually
+	if runtime.GOARCH != "arm" {
+		log.Println("Not running on compatible hardware")
+		return
+	}
+
 	// @TODO: Could probably abstract this up to the "router" and pass it in
 	// so we only have to define it once.
 	epd, _ := epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")

@@ -27,40 +27,51 @@ Supported commands:
 
 `
 
+// Use main() as a wrapper to collect and exit with a status code for systemd
 func main() {
+	exitCode := run()
+	log.Printf("Exiting with code %d", exitCode)
+	defer os.Exit(exitCode)
+}
+
+func run() int {
 	if len(os.Args) < 2 {
 		fmt.Print(README)
-		return
+		return 1
 	}
 
 	switch os.Args[1] {
 	case "clear":
 		displayClear()
-		return
+		return 1
 
 	case "current":
 		image, err := getCurrentImage()
 		if err != nil {
-			return
+			return 1
 		}
 
 		displayImage(image)
-		return
+		return 0
 
 	case "display":
 		if len(os.Args) < 3 {
 			fmt.Print("Missing argument: display requires id")
-			return
+			return 1
 		}
 		id := os.Args[2]
 
 		image, err := getImageById(id)
 		if err != nil {
-			return
+			return 1
 		}
 
 		displayImage(image)
-		return
+		return 0
+
+	default:
+		fmt.Print(README)
+		return 1
 	}
 }
 

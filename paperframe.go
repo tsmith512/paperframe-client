@@ -27,10 +27,9 @@ Supported commands:
 
 `
 
-// Use main() as a wrapper to collect and exit with a status code for systemd
+// Use main() as a wrapper to collect and exit with a status code
 func main() {
 	exitCode := run()
-	log.Printf("Exiting with code %d", exitCode)
 	defer os.Exit(exitCode)
 }
 

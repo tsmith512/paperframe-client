@@ -2,17 +2,18 @@ package main
 
 import (
 	"errors"
-	"io"
-	"tsmith512/epd7in5v2"
-
 	"fmt"
 	"image"
 	"image/gif"
 	"image/jpeg"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
+	"tsmith512/epd7in5v2"
 )
 
 const API_ENDPOINT = "https://paperframe.tsmith.photos/api"
@@ -24,6 +25,7 @@ Supported commands:
   clear        Clear the screen to white
   current      Download the current image and display it
   display [id] Download a specific image ID and display it
+  service      Display images, updating hourly, clear on TERM/INT.
 
 `
 
@@ -76,6 +78,31 @@ func run() int {
 
 		displayImage(image, epd)
 		return 0
+
+	case "service":
+		// For now: start by doing what "current" does, then wait for a SIGTERM to
+		// clear the screen and exit.
+		image, err := getCurrentImage()
+		if err != nil {
+			return 1
+		}
+
+		displayImage(image, epd)
+
+		log.Println("Starting signal listener")
+
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+		done := make(chan int, 1)
+
+		go func() {
+			received := <-signals
+			log.Println(fmt.Sprintf("Received signal: %s", received))
+			displayClear(epd)
+			done <- 0
+		}()
+
+		return <-done
 
 	default:
 		fmt.Print(README)

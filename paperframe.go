@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 	"tsmith512/epd7in5v2"
 )
 
@@ -87,20 +88,48 @@ func run() int {
 
 		displayImage(image, epd)
 
-		log.Println("Starting signal listener")
+		log.Println("Waiting for hourly or exit")
 
+		// Channels for system term/int signals and exit code for graceful shutdown
 		signals := make(chan os.Signal, 1)
 		signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
-		done := make(chan int, 1)
+		exit := make(chan int, 1)
 
+		// New ticker-on-the-minute and a channel to stop it
+		ticker := time.NewTicker(time.Minute)
+		stopTicker := make(chan bool, 1)
+
+		// NEW IMAGE TOP OF THE HOUR
 		go func() {
-			received := <-signals
-			log.Println(fmt.Sprintf("Received signal: %s", received))
-			displayClear(epd)
-			done <- 0
+			for {
+				select {
+				case currentTime := <-ticker.C:
+					if currentTime.Minute() == 0 {
+						log.Printf("-> Top of the hour at %s", currentTime.String())
+						// @TODO: DRY, this is the same "get current image"
+						image, _ := getImage("")
+						if image != nil {
+							displayImage(image, epd)
+						}
+					}
+
+				case <-stopTicker:
+					ticker.Stop()
+					log.Printf("-> Ticker stopped")
+				}
+			}
 		}()
 
-		return <-done
+		// CLEAR AND GRACEFUL SHUTDOWN
+		go func() {
+			received := <-signals
+			log.Println(fmt.Sprintf("-> Received signal: %s", received))
+			stopTicker <- true
+			displayClear(epd)
+			exit <- 0
+		}()
+
+		return <-exit
 
 	default:
 		fmt.Print(README)

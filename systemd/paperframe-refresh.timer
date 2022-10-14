@@ -1,0 +1,13 @@
+[Unit]
+Description=Paperframe Refresh Display
+Wants=network-online.target
+Requisite=paperframe.service
+
+[Timer]
+Persistent=false
+OnCalendar=*-*-* *:00:00
+Unit=paperframe-refresh.service
+
+[Install]
+WantedBy=timers.target paperframe.service
+

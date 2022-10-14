@@ -1,0 +1,17 @@
+[Unit]
+Description=Paperframe Service
+After=raspi-config.service
+Wants=network-online.target
+
+[Service]
+Restart=on-failure
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/home/paperframe/paperframe current
+ExecStop=/home/paperframe/paperframe clear
+SuccessExitStatus=0
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

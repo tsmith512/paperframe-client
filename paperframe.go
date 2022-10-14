@@ -39,9 +39,18 @@ func run() int {
 		return 1
 	}
 
+	var epd *epd7in5v2.Epd
+
+	if runtime.GOARCH != "arm" {
+		log.Println("Not running on compatible hardware, skipping EPD init.")
+	} else {
+		// See pinout at https://www.waveshare.com/wiki/7.5inch_e-Paper_HAT_Manual#Hardware_connection
+		epd, _ = epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
+	}
+
 	switch os.Args[1] {
 	case "clear":
-		displayClear()
+		displayClear(epd)
 		return 1
 
 	case "current":
@@ -50,7 +59,7 @@ func run() int {
 			return 1
 		}
 
-		displayImage(image)
+		displayImage(image, epd)
 		return 0
 
 	case "display":
@@ -65,7 +74,7 @@ func run() int {
 			return 1
 		}
 
-		displayImage(image)
+		displayImage(image, epd)
 		return 0
 
 	default:
@@ -137,15 +146,11 @@ func decodeImage(data io.Reader, mimeType string) (image.Image, error) {
 	}
 }
 
-func displayImage(image image.Image) {
-	// @TODO: This is a weird place to check for this... move it eventually
-	if runtime.GOARCH != "arm" {
-		log.Println("Not running on compatible hardware")
+func displayImage(image image.Image, epd *epd7in5v2.Epd) {
+	if epd == nil {
+		log.Println("-> Screen unavailable: skipping display")
 		return
 	}
-
-	// See pinout at https://www.waveshare.com/wiki/7.5inch_e-Paper_HAT_Manual#Hardware_connection
-	epd, _ := epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
 
 	log.Println("-> Reset")
 	epd.Reset()
@@ -160,16 +165,11 @@ func displayImage(image image.Image) {
 	epd.Sleep()
 }
 
-func displayClear() {
-	// @TODO: This is a weird place to check for this... move it eventually
-	if runtime.GOARCH != "arm" {
-		log.Println("Not running on compatible hardware")
+func displayClear(epd *epd7in5v2.Epd) {
+	if epd == nil {
+		log.Println("-> Screen unavailable: skipping clear")
 		return
 	}
-
-	// @TODO: Could probably abstract this up to the "router" and pass it in
-	// so we only have to define it once.
-	epd, _ := epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
 
 	log.Println("-> Reset")
 	epd.Reset()
@@ -184,10 +184,11 @@ func displayClear() {
 	epd.Sleep()
 }
 
-func displaySleep() {
-	// @TODO: Could probably abstract this up to the "router" and pass it in
-	// so we only have to define it once.
-	epd, _ := epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
+func displaySleep(epd *epd7in5v2.Epd) {
+	if epd == nil {
+		log.Println("-> Screen unavailable: skipping sleep")
+		return
+	}
 
 	log.Println("-> Reset")
 	epd.Reset()

@@ -31,8 +31,7 @@ Supported commands:
 
 // Use main() as a wrapper to collect and exit with a status code
 func main() {
-	exitCode := run()
-	defer os.Exit(exitCode)
+	defer os.Exit(run())
 }
 
 func run() int {
@@ -44,7 +43,7 @@ func run() int {
 	var epd *epd7in5v2.Epd
 
 	if runtime.GOARCH != "arm" {
-		log.Println("Not running on compatible hardware, skipping EPD init.")
+		log.Println("Skipping screen init: not running on compatible hardware")
 	} else {
 		// See pinout at https://www.waveshare.com/wiki/7.5inch_e-Paper_HAT_Manual#Hardware_connection
 		epd, _ = epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
@@ -56,7 +55,7 @@ func run() int {
 		return 1
 
 	case "current":
-		image, err := getCurrentImage()
+		image, err := getImage("")
 		if err != nil {
 			return 1
 		}
@@ -66,12 +65,11 @@ func run() int {
 
 	case "display":
 		if len(os.Args) < 3 {
-			fmt.Print("Missing argument: display requires id")
+			log.Println("Missing argument: display requires id")
 			return 1
 		}
-		id := os.Args[2]
 
-		image, err := getImageById(id)
+		image, err := getImage(os.Args[2])
 		if err != nil {
 			return 1
 		}
@@ -82,7 +80,7 @@ func run() int {
 	case "service":
 		// For now: start by doing what "current" does, then wait for a SIGTERM to
 		// clear the screen and exit.
-		image, err := getCurrentImage()
+		image, err := getImage("")
 		if err != nil {
 			return 1
 		}
@@ -110,34 +108,23 @@ func run() int {
 	}
 }
 
-// Fetch and decode the image that is currently set to active
-func getCurrentImage() (image.Image, error) {
-	data, err := http.Get(API_ENDPOINT + "/now/image")
+// Fetch an image to display. If id is empty, get the whatever the service
+// says is current and use that.
+func getImage(id string) (image.Image, error) {
+	var path string
 
-	if err != nil || data.StatusCode != 200 {
-		log.Println("Unable to fetch current image")
-		log.Printf("Error: %#v\n", err)
-		log.Printf("HTTP Status: %s\n", data.Request.Response.Status)
-		return nil, errors.New("Unable to fetch current image")
-	}
-
-	image, err := decodeImage(data.Body, data.Header.Get("Content-Type"))
-	if err != nil {
-		return nil, err
+	if id == "" {
+		path = "/now/image"
 	} else {
-		return image, nil
+		path = "/image/" + id
 	}
-}
 
-// Fetch and decode a specific image given its ID
-func getImageById(id string) (image.Image, error) {
-	data, err := http.Get(API_ENDPOINT + "/image/" + id)
+	data, err := http.Get(API_ENDPOINT + path)
 
 	if err != nil || data.StatusCode != 200 {
-		log.Printf("Unable to fetch image by id: %s", id)
-		log.Printf("Error: %#v\n", err)
-		log.Printf("HTTP Status: %s\n", data.Request.Response.Status)
-		return nil, errors.New("Unable to fetch current image")
+		log.Println("Unable to fetch image at " + path)
+		log.Println("HTTP Status: " + data.Request.Response.Status)
+		return nil, errors.New("Unable to fetch image. (HTTP " + data.Request.Response.Status + ")")
 	}
 
 	image, err := decodeImage(data.Body, data.Header.Get("Content-Type"))
@@ -162,20 +149,20 @@ func decodeImage(data io.Reader, mimeType string) (image.Image, error) {
 	case "image/jpg", "image/jpeg":
 		image, err := jpeg.Decode(data)
 		if err != nil {
-			log.Printf("Error decoding GIF: %s", err)
+			log.Printf("Error decoding JPEG: %s", err)
 			return nil, err
 		}
 		return image, nil
 
 	default:
-		log.Printf("Unable to determine image type")
-		return nil, errors.New("Unable to determine the image type")
+		log.Printf("Image type indeterminate or unsupported")
+		return nil, errors.New("Image type indeterminate or unsupported")
 	}
 }
 
 func displayImage(image image.Image, epd *epd7in5v2.Epd) {
 	if epd == nil {
-		log.Println("-> Screen unavailable: skipping display")
+		log.Println("Screen unavailable: skipping display")
 		return
 	}
 
@@ -194,7 +181,7 @@ func displayImage(image image.Image, epd *epd7in5v2.Epd) {
 
 func displayClear(epd *epd7in5v2.Epd) {
 	if epd == nil {
-		log.Println("-> Screen unavailable: skipping clear")
+		log.Println("Screen unavailable: skipping clear")
 		return
 	}
 
@@ -206,19 +193,6 @@ func displayClear(epd *epd7in5v2.Epd) {
 
 	log.Println("-> Clear")
 	epd.Clear()
-
-	log.Println("-> Sleep")
-	epd.Sleep()
-}
-
-func displaySleep(epd *epd7in5v2.Epd) {
-	if epd == nil {
-		log.Println("-> Screen unavailable: skipping sleep")
-		return
-	}
-
-	log.Println("-> Reset")
-	epd.Reset()
 
 	log.Println("-> Sleep")
 	epd.Sleep()

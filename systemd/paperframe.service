@@ -4,11 +4,9 @@ After=raspi-config.service
 Wants=network-online.target
 
 [Service]
-Restart=on-failure
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/home/paperframe/paperframe current
-ExecStop=/home/paperframe/paperframe clear
+Type=exec
+ExecStart=/home/paperframe/paperframe service
+RemainAfterExit=no
 SuccessExitStatus=0
 Restart=on-failure
 RestartSec=10s

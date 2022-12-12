@@ -79,9 +79,13 @@ func run() int {
 		return 0
 
 	case "service":
-		// For now: start by doing what "current" does, then wait for a SIGTERM to
-		// clear the screen and exit.
-		image, err := getImage("")
+		// Start by determining what to show now
+		currentId, err := getCurrentId()
+		if err != nil {
+			return 1
+		}
+
+		image, err := getImage(currentId)
 		if err != nil {
 			return 1
 		}
@@ -99,17 +103,28 @@ func run() int {
 		ticker := time.NewTicker(time.Minute)
 		stopTicker := make(chan bool, 1)
 
-		// NEW IMAGE TOP OF THE HOUR
+		// EVERY 10 MIN, CHECK IF ACTIVE IMAGE HAS CHANGED
 		go func() {
 			for {
 				select {
 				case currentTime := <-ticker.C:
-					if currentTime.Minute() == 0 {
-						log.Printf("-> Top of the hour at %s", currentTime.String())
-						// @TODO: DRY, this is the same "get current image"
-						image, _ := getImage("")
-						if image != nil {
-							displayImage(image, epd)
+					if currentTime.Minute()%10 == 0 {
+						log.Printf("-> Ten-minute check at %s", currentTime.String())
+						checkNewId, err := getCurrentId()
+
+						if err != nil {
+							log.Printf("-> Failed to fetch current ID")
+						}
+
+						if checkNewId == currentId {
+							log.Printf("-> Current image already on display")
+						} else {
+							currentId = checkNewId
+
+							image, _ := getImage(currentId)
+							if image != nil {
+								displayImage(image, epd)
+							}
 						}
 					}
 
@@ -137,16 +152,37 @@ func run() int {
 	}
 }
 
-// Fetch an image to display. If id is empty, get the whatever the service
-// says is current and use that.
+// Fetch the current ID from the API.
+func getCurrentId() (string, error) {
+	data, err := http.Get(API_ENDPOINT + "/now/id")
+
+	if err != nil || data.StatusCode != 200 {
+		log.Println("HTTP Status: " + data.Request.Response.Status)
+		return "", errors.New("Unable to fetch current ID. (HTTP " + data.Request.Response.Status + ")")
+	}
+
+	id, err := io.ReadAll(data.Body)
+	if err != nil {
+		return "", errors.New("Unable to decode API response body for current ID.")
+	}
+
+	return string(id), nil
+}
+
+// Fetch an image to display.
+// Backwards compatiblility: if id == "", look up current ID and use that.
 func getImage(id string) (image.Image, error) {
 	var path string
 
 	if id == "" {
-		path = "/now/image"
-	} else {
-		path = "/image/" + id
+		var err error
+		id, err = getCurrentId()
+		if err != nil {
+			return nil, errors.New("Unable to look up current ID.")
+		}
 	}
+
+	path = "/image/" + id
 
 	data, err := http.Get(API_ENDPOINT + path)
 

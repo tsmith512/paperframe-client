@@ -15,10 +15,12 @@ import (
 	"syscall"
 	"time"
 	"tsmith512/epd7in5v2"
+
+	"github.com/spf13/viper"
 )
 
-const API_ENDPOINT = "https://paperframe.tsmith.photos/api"
-const CHECK_FREQ = 10 // Must be =< 60
+var API_ENDPOINT string
+var CHECK_FREQ int
 
 const README = `
 Usage: paperframe <command>
@@ -29,6 +31,9 @@ Supported commands:
   display [id] Download a specific image ID and display it
   service      Display images, updating hourly, clear on TERM/INT.
 
+Further, a configuration file "paperframe.toml" must exist in /etc or
+~/. and should declare at least the API endpoint.
+
 `
 
 // Use main() as a wrapper to collect and exit with a status code
@@ -37,6 +42,25 @@ func main() {
 }
 
 func run() int {
+	viper.SetConfigName("paperframe")
+	viper.SetConfigType("toml")
+	viper.AddConfigPath("/etc")
+	viper.AddConfigPath("$HOME/.paperframe")
+	viper.SetDefault("api.frequency", 10)
+	err := viper.ReadInConfig()
+
+	if err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			log.Printf("Configuration file not found, using defaults.")
+		} else {
+			log.Printf("Fatal error loading config: %s", err)
+			return 1
+		}
+	}
+
+	API_ENDPOINT = viper.GetString("api.endpoint")
+	CHECK_FREQ = viper.GetInt("api.frequency")
+
 	if len(os.Args) < 2 {
 		fmt.Print(README)
 		return 1
@@ -93,7 +117,7 @@ func run() int {
 
 		displayImage(image, epd)
 
-		log.Println("Waiting for hourly or exit")
+		log.Printf("Waiting for next %d-minute check or exit signal.\n", CHECK_FREQ)
 
 		// Channels for system term/int signals and exit code for graceful shutdown
 		signals := make(chan os.Signal, 1)
@@ -110,7 +134,7 @@ func run() int {
 				select {
 				case currentTime := <-ticker.C:
 					if currentTime.Minute()%CHECK_FREQ == 0 {
-						log.Printf("-> Ten-minute check at %s", currentTime.String())
+						log.Printf("-> %d-minute check at %s", CHECK_FREQ, currentTime.String())
 						checkNewId, err := getCurrentId()
 
 						if err != nil {

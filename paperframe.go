@@ -21,6 +21,7 @@ import (
 
 var API_ENDPOINT string
 var CHECK_FREQ int
+var DEBUG bool
 
 const README = `
 Usage: paperframe <command>
@@ -47,6 +48,7 @@ func run() int {
 	viper.AddConfigPath("/etc")
 	viper.AddConfigPath("$HOME/.paperframe")
 	viper.SetDefault("api.frequency", 10)
+	viper.SetDefault("debug", false)
 	err := viper.ReadInConfig()
 
 	if err != nil {
@@ -60,6 +62,11 @@ func run() int {
 
 	API_ENDPOINT = viper.GetString("api.endpoint")
 	CHECK_FREQ = viper.GetInt("api.frequency")
+	DEBUG = viper.GetBool("debug")
+
+	if DEBUG {
+		log.Println("Verbose output for debugging")
+	}
 
 	if len(os.Args) < 2 {
 		fmt.Print(README)
@@ -134,7 +141,9 @@ func run() int {
 				select {
 				case currentTime := <-ticker.C:
 					if currentTime.Minute()%CHECK_FREQ == 0 {
-						log.Printf("-> %d-minute check at %s", CHECK_FREQ, currentTime.String())
+						if DEBUG {
+							log.Printf("-> %d-minute check at %s", CHECK_FREQ, currentTime.String())
+						}
 						checkNewId, err := getCurrentId()
 
 						if err != nil {
@@ -142,9 +151,17 @@ func run() int {
 						}
 
 						if checkNewId == currentId {
-							log.Printf("-> Current image already on display")
+							// Current ID still active, make a debug message or quietly wait
+							if DEBUG {
+								log.Printf("-> Current image already on display (%s)", currentId)
+							}
 						} else {
+							// New ID, replace and update display
 							currentId = checkNewId
+
+							if DEBUG {
+								log.Printf("-> New image ID received: %s", checkNewId)
+							}
 
 							image, _ := getImage(currentId)
 							if image != nil {
@@ -252,38 +269,54 @@ func decodeImage(data io.Reader, mimeType string) (image.Image, error) {
 
 func displayImage(image image.Image, epd *epd7in5v2.Epd) {
 	if epd == nil {
-		log.Println("Screen unavailable: skipping display")
+		if DEBUG {
+			log.Println("Screen unavailable: skipping display")
+		}
 		return
 	}
 
-	log.Println("-> Reset")
+	if DEBUG {
+		log.Println("-> Reset")
+	}
 	epd.Reset()
 
-	log.Println("-> Init")
+	if DEBUG {
+		log.Println("-> Init")
+	}
 	epd.Init()
 
 	log.Println("-> Displaying")
 	epd.Display(epd.Convert(image))
 
-	log.Println("-> Sleep")
+	if DEBUG {
+		log.Println("-> Sleep")
+	}
 	epd.Sleep()
 }
 
 func displayClear(epd *epd7in5v2.Epd) {
 	if epd == nil {
-		log.Println("Screen unavailable: skipping clear")
+		if DEBUG {
+			log.Println("Screen unavailable: skipping clear")
+		}
 		return
 	}
 
-	log.Println("-> Reset")
+	if DEBUG {
+		log.Println("-> Reset")
+	}
 	epd.Reset()
 
-	log.Println("-> Init")
+	if DEBUG {
+		log.Println("-> Init")
+	}
 	epd.Init()
 
 	log.Println("-> Clear")
 	epd.Clear()
 
-	log.Println("-> Sleep")
+	if DEBUG {
+		log.Println("-> Sleep")
+	}
 	epd.Sleep()
 }

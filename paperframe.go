@@ -18,6 +18,7 @@ import (
 )
 
 const API_ENDPOINT = "https://paperframe.tsmith.photos/api"
+const CHECK_FREQ = 10 // Must be =< 60
 
 const README = `
 Usage: paperframe <command>
@@ -108,7 +109,7 @@ func run() int {
 			for {
 				select {
 				case currentTime := <-ticker.C:
-					if currentTime.Minute()%10 == 0 {
+					if currentTime.Minute()%CHECK_FREQ == 0 {
 						log.Printf("-> Ten-minute check at %s", currentTime.String())
 						checkNewId, err := getCurrentId()
 

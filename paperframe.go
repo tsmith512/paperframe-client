@@ -91,8 +91,15 @@ func run() int {
 		return 1
 
 	case "current":
-		image, err := getImage("")
+		currentId, err := getCurrentId()
 		if err != nil {
+			log.Println(err)
+			return 1
+		}
+
+		image, err := getImage(currentId)
+		if err != nil {
+			log.Println(err)
 			return 1
 		}
 
@@ -107,6 +114,7 @@ func run() int {
 
 		image, err := getImage(os.Args[2])
 		if err != nil {
+			log.Println(err)
 			return 1
 		}
 

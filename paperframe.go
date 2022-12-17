@@ -21,6 +21,7 @@ import (
 
 var API_ENDPOINT string
 var CHECK_FREQ int
+var CLEAR_AFTER int
 var DEBUG bool
 
 const README = `
@@ -49,6 +50,7 @@ func run() int {
 	viper.AddConfigPath("$HOME/.paperframe")
 	viper.SetDefault("api.frequency", 10)
 	viper.SetDefault("debug", false)
+	viper.SetDefault("clear_after", 12)
 	err := viper.ReadInConfig()
 
 	if err != nil {
@@ -63,6 +65,7 @@ func run() int {
 	API_ENDPOINT = viper.GetString("api.endpoint")
 	CHECK_FREQ = viper.GetInt("api.frequency")
 	DEBUG = viper.GetBool("debug")
+	CLEAR_AFTER = viper.GetInt("clear_after")
 
 	if DEBUG {
 		log.Println("Verbose output for debugging")
@@ -111,18 +114,23 @@ func run() int {
 		return 0
 
 	case "service":
+		// Keep track of the last time we refreshed the screen
+		lastUpdated := time.Now()
+
 		// Start by determining what to show now
 		currentId, err := getCurrentId()
 		if err != nil {
-			return 1
+			log.Println(err)
 		}
 
 		image, err := getImage(currentId)
 		if err != nil {
-			return 1
+			log.Println(err)
 		}
 
-		displayImage(image, epd)
+		if image != nil {
+			displayImage(image, epd)
+		}
 
 		log.Printf("Waiting for next %d-minute check or exit signal.\n", CHECK_FREQ)
 
@@ -144,30 +152,65 @@ func run() int {
 						if DEBUG {
 							log.Printf("-> %d-minute check at %s", CHECK_FREQ, currentTime.String())
 						}
+
+						// Check what's on display now:
 						checkNewId, err := getCurrentId()
 
-						if err != nil {
+						if err != nil || len(checkNewId) == 0 {
+							// HTTP Errors or Network transit errors would both be caught here
 							log.Printf("-> Failed to fetch current ID")
+
+							if time.Since(lastUpdated).Hours() >= float64(CLEAR_AFTER) {
+								// This likely means the device has gone offline.
+								// @TODO: Do we want to show a message or start downloading files?
+								fmt.Printf("-> Display unchanged too long. Clearing to prevent burn-in.")
+								displayClear(epd)
+								lastUpdated = time.Now()
+							}
+
+							continue
 						}
 
 						if checkNewId == currentId {
-							// Current ID still active, make a debug message or quietly wait
+							// The image hasn't changed since the last check. This is expected
+							// except at the top of the hour or if I manually changed it.
 							if DEBUG {
 								log.Printf("-> Current image already on display (%s)", currentId)
 							}
-						} else {
-							// New ID, replace and update display
-							currentId = checkNewId
-
-							if DEBUG {
-								log.Printf("-> New image ID received: %s", checkNewId)
+							if time.Since(lastUpdated).Hours() >= float64(CLEAR_AFTER) {
+								// This should not happen unless the Worker cron stopped...
+								fmt.Printf("-> Display unchanged too long. Clearing to prevent burn-in.")
+								displayClear(epd)
+								lastUpdated = time.Now()
 							}
 
-							image, _ := getImage(currentId)
-							if image != nil {
-								displayImage(image, epd)
-							}
+							continue
 						}
+
+						if DEBUG {
+							log.Printf("-> New image ID received: %s", checkNewId)
+						}
+
+						image, err := getImage(checkNewId)
+						if err != nil {
+							log.Printf("-> Image could not be downloaded: %s", err)
+
+							if time.Since(lastUpdated).Hours() >= float64(CLEAR_AFTER) {
+								// Somehow we can get the next image ID, but we cannot get the
+								// file itself... that is also a case I can't quite figure how
+								// we'd get to.
+								fmt.Printf("-> Display unchanged too long. Clearing to prevent burn-in.")
+								displayClear(epd)
+								lastUpdated = time.Now()
+							}
+
+							continue
+						}
+
+						// New image downloaded; replace and update display
+						displayImage(image, epd)
+						currentId = checkNewId
+						lastUpdated = time.Now()
 					}
 
 				case <-stopTicker:
@@ -180,9 +223,14 @@ func run() int {
 		// CLEAR AND GRACEFUL SHUTDOWN
 		go func() {
 			received := <-signals
-			log.Println(fmt.Sprintf("-> Received signal: %s", received))
+
+			if DEBUG {
+				log.Println(fmt.Sprintf("-> Received signal: %s", received))
+			}
+
 			stopTicker <- true
 			displayClear(epd)
+			lastUpdated = time.Now()
 			exit <- 0
 		}()
 
@@ -198,13 +246,27 @@ func run() int {
 func getCurrentId() (string, error) {
 	data, err := http.Get(API_ENDPOINT + "/now/id")
 
-	if err != nil || data.StatusCode != 200 {
-		log.Println("HTTP Status: " + data.Request.Response.Status)
-		return "", errors.New("Unable to fetch current ID. (HTTP " + data.Request.Response.Status + ")")
+	if err != nil {
+		// Some kind of networking error (we didn't even get an HTTP response)
+		if DEBUG {
+			log.Printf("Unable to fetch current image ID: %#v", err)
+		}
+		return "", errors.New("Unable to fetch current ID. (Networking error)")
+	}
+
+	if data.StatusCode != 200 {
+		if DEBUG {
+			log.Printf("Couldn't fetch current image ID. HTTP %d.", data.StatusCode)
+		}
+		return "", errors.New(fmt.Sprintf("Unable to fetch current ID. (HTTP %d)", data.StatusCode))
 	}
 
 	id, err := io.ReadAll(data.Body)
 	if err != nil {
+		if DEBUG {
+			log.Printf("Couldn't decode response: %s.", string(id))
+		}
+
 		return "", errors.New("Unable to decode API response body for current ID.")
 	}
 
@@ -228,10 +290,18 @@ func getImage(id string) (image.Image, error) {
 
 	data, err := http.Get(API_ENDPOINT + path)
 
-	if err != nil || data.StatusCode != 200 {
-		log.Println("Unable to fetch image at " + path)
-		log.Println("HTTP Status: " + data.Request.Response.Status)
-		return nil, errors.New("Unable to fetch image. (HTTP " + data.Request.Response.Status + ")")
+	if err != nil {
+		// Some kind of networking error (we didn't even get an HTTP response)
+		if DEBUG {
+			log.Printf("Unable to fetch image at '%s': %#v", path, err)
+		}
+		return nil, errors.New("Unable to fetch image. (Networking error)")
+	}
+	if data.StatusCode != 200 {
+		if DEBUG {
+			log.Printf("Couldn't fetch image at '%s'. HTTP %d.", path, data.StatusCode)
+		}
+		return nil, errors.New(fmt.Sprintf("Unable to fetch image. (HTTP %d)", data.StatusCode))
 	}
 
 	image, err := decodeImage(data.Body, data.Header.Get("Content-Type"))

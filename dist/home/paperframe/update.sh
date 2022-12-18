@@ -1,6 +1,9 @@
 #!/bin/sh
 
-# @TODO: This will get the newest file by time, not by tarball version.
+# Download the latest release
+wget --content-disposition https://paperframes.net/api/download
+
+# Grab its filename. (This will get the newest file, not the latest number.)
 PACKAGE=$(ls -Art paperframe*.tar.gz | tail -n 1)
 
 rm -rf /tmp/paperframe-install

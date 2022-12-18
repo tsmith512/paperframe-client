@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=exec
-ExecStart=/home/paperframe/paperframe service
+ExecStart=/bin/paperframe service
 RemainAfterExit=no
 SuccessExitStatus=0
 Restart=on-failure

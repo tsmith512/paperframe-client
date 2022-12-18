@@ -1,2 +1,3 @@
 temp.jpg
-paperframe
+dist/bin/paperframe
+*.tar.gz

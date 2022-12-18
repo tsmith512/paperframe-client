@@ -151,7 +151,7 @@ func run() int {
 		ticker := time.NewTicker(time.Minute)
 		stopTicker := make(chan bool, 1)
 
-		// EVERY 10 MIN, CHECK IF ACTIVE IMAGE HAS CHANGED
+		// EVERY CHECK_FREQ MIN, CHECK IF ACTIVE IMAGE HAS CHANGED
 		go func() {
 			for {
 				select {

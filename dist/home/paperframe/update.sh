@@ -1,10 +1,13 @@
-#!/bin/sh
+#!/bin/bash
 
 # Download the latest release
 wget --content-disposition https://paperframes.net/api/download
 
 # Grab its filename. (This will get the newest file, not the latest number.)
 PACKAGE=$(ls -Art paperframe*.tar.gz | tail -n 1)
+
+# Bail if we didn't get anything.
+[ -z $PACKAGE ] && exit 1
 
 rm -rf /tmp/paperframe-install
 mkdir /tmp/paperframe-install

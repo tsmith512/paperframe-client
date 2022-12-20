@@ -80,9 +80,7 @@ func run() int {
 
 	var epd *epd7in5v2.Epd
 
-	if runtime.GOARCH != "arm" {
-		log.Println("Skipping screen init: not running on compatible hardware")
-	} else {
+	if runtime.GOARCH == "arm" {
 		// See pinout at https://www.waveshare.com/wiki/7.5inch_e-Paper_HAT_Manual#Hardware_connection
 		epd, err = epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
 
@@ -92,6 +90,8 @@ func run() int {
 			log.Printf("Failed to initialize screen: %s", err)
 			return 1
 		}
+	} else {
+		log.Println("Skipping screen init: not running on compatible hardware")
 	}
 
 	switch os.Args[1] {

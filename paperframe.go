@@ -82,13 +82,20 @@ func run() int {
 		log.Println("Skipping screen init: not running on compatible hardware")
 	} else {
 		// See pinout at https://www.waveshare.com/wiki/7.5inch_e-Paper_HAT_Manual#Hardware_connection
-		epd, _ = epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
+		epd, err = epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
+
+		if err != nil || epd == nil {
+			// One of the test devices likes to fail to init the screen and gets stuck
+			// perpetually waiting for idle. But restarting the service will fix it...
+			log.Printf("Failed to initialize screen: %s", err)
+			return 1
+		}
 	}
 
 	switch os.Args[1] {
 	case "clear":
 		displayClear(epd)
-		return 1
+		return 0
 
 	case "current":
 		currentId, err := getCurrentId()

@@ -23,6 +23,7 @@ var API_ENDPOINT string
 var CHECK_FREQ int
 var CLEAR_AFTER int
 var DEBUG bool
+var VERSION string
 
 const README = `
 Usage: paperframe <command>
@@ -32,6 +33,7 @@ Supported commands:
   current      Download the current image and display it
   display [id] Download a specific image ID and display it
   service      Display images, updating hourly, clear on TERM/INT.
+  version      Print version number and exit.
 
 Further, a configuration file "paperframe.toml" must exist in /etc or
 ~/. and should declare at least the API endpoint.
@@ -93,6 +95,10 @@ func run() int {
 	}
 
 	switch os.Args[1] {
+	case "version":
+		fmt.Printf("%s\n", VERSION)
+		return 0
+
 	case "clear":
 		displayClear(epd)
 		return 0

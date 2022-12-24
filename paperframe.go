@@ -50,6 +50,7 @@ func run() int {
 	viper.SetConfigType("toml")
 	viper.AddConfigPath("/etc")
 	viper.AddConfigPath("$HOME/.paperframe")
+	viper.SetDefault("api.endpoint", "https://paperframes.net/api")
 	viper.SetDefault("api.frequency", 10)
 	viper.SetDefault("debug", false)
 	viper.SetDefault("clear_after", 12)
@@ -409,7 +410,9 @@ func displayImage(image image.Image, epd *epd7in5v2.Epd) {
 	}
 	epd.Init()
 
-	log.Println("-> Displaying")
+	if DEBUG {
+		log.Println("-> Displaying")
+	}
 	epd.Display(epd.Convert(image))
 
 	if DEBUG {
@@ -436,7 +439,9 @@ func displayClear(epd *epd7in5v2.Epd) {
 	}
 	epd.Init()
 
-	log.Println("-> Clear")
+	if DEBUG {
+		log.Println("-> Clear")
+	}
 	epd.Clear()
 
 	if DEBUG {

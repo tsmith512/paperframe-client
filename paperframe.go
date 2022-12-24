@@ -135,6 +135,19 @@ func run() int {
 		return 0
 
 	case "service":
+		// Systemd has a nasty habit of starting this service after dhcpd has forked
+		// but not actually established an address so the initial image check fails.
+		// Wait until we have reached the API before moving into the service loop.
+		for i := 0; i <= 6; i += 1 {
+			if checkConnected() {
+				if DEBUG {
+					log.Println("Connection to API confirmed")
+				}
+				break
+			}
+			time.Sleep(10 * time.Second)
+		}
+
 		// Keep track of the last time we refreshed the screen
 		lastUpdated := time.Now()
 
@@ -331,6 +344,26 @@ func getImage(id string) (image.Image, error) {
 	} else {
 		return image, nil
 	}
+}
+
+func checkConnected() bool {
+	res, err := http.Get(API_ENDPOINT)
+
+	if err != nil {
+		if DEBUG {
+			log.Printf("Connection check error: %#v", err)
+		}
+		return false
+	}
+
+	if res.StatusCode > 300 {
+		if DEBUG {
+			log.Printf("Connection check HTTP %d: %#v", res.StatusCode, res)
+		}
+		return false
+	}
+
+	return true
 }
 
 // Decode GIF or JPEG image given a mimeType

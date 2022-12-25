@@ -1,0 +1,8 @@
+# Paperframe Configuration
+
+debug = false
+clear_after = 12
+
+[api]
+endpoint =  "https://paperframes.net/api"
+frequency = 10

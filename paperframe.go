@@ -23,6 +23,7 @@ var API_ENDPOINT string
 var CHECK_FREQ int
 var CLEAR_AFTER int
 var DEBUG bool
+var VERSION string
 
 const README = `
 Usage: paperframe <command>
@@ -32,6 +33,7 @@ Supported commands:
   current      Download the current image and display it
   display [id] Download a specific image ID and display it
   service      Display images, updating hourly, clear on TERM/INT.
+  version      Print version number and exit.
 
 Further, a configuration file "paperframe.toml" must exist in /etc or
 ~/. and should declare at least the API endpoint.
@@ -48,6 +50,7 @@ func run() int {
 	viper.SetConfigType("toml")
 	viper.AddConfigPath("/etc")
 	viper.AddConfigPath("$HOME/.paperframe")
+	viper.SetDefault("api.endpoint", "https://paperframes.net/api")
 	viper.SetDefault("api.frequency", 10)
 	viper.SetDefault("debug", false)
 	viper.SetDefault("clear_after", 12)
@@ -78,17 +81,28 @@ func run() int {
 
 	var epd *epd7in5v2.Epd
 
-	if runtime.GOARCH != "arm" {
-		log.Println("Skipping screen init: not running on compatible hardware")
-	} else {
+	if runtime.GOARCH == "arm" {
 		// See pinout at https://www.waveshare.com/wiki/7.5inch_e-Paper_HAT_Manual#Hardware_connection
-		epd, _ = epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
+		epd, err = epd7in5v2.New("P1_22", "P1_24", "P1_11", "P1_18")
+
+		if err != nil || epd == nil {
+			// One of the test devices likes to fail to init the screen and gets stuck
+			// perpetually waiting for idle. But restarting the service will fix it...
+			log.Printf("Failed to initialize screen: %s", err)
+			return 1
+		}
+	} else {
+		log.Println("Skipping screen init: not running on compatible hardware")
 	}
 
 	switch os.Args[1] {
+	case "version":
+		fmt.Printf("%s\n", VERSION)
+		return 0
+
 	case "clear":
 		displayClear(epd)
-		return 1
+		return 0
 
 	case "current":
 		currentId, err := getCurrentId()
@@ -122,6 +136,19 @@ func run() int {
 		return 0
 
 	case "service":
+		// Systemd has a nasty habit of starting this service after dhcpd has forked
+		// but not actually established an address so the initial image check fails.
+		// Wait until we have reached the API before moving into the service loop.
+		for i := 0; i <= 6; i += 1 {
+			if checkConnected() {
+				if DEBUG {
+					log.Println("Connection to API confirmed")
+				}
+				break
+			}
+			time.Sleep(10 * time.Second)
+		}
+
 		// Keep track of the last time we refreshed the screen
 		lastUpdated := time.Now()
 
@@ -151,7 +178,7 @@ func run() int {
 		ticker := time.NewTicker(time.Minute)
 		stopTicker := make(chan bool, 1)
 
-		// EVERY 10 MIN, CHECK IF ACTIVE IMAGE HAS CHANGED
+		// EVERY CHECK_FREQ MIN, CHECK IF ACTIVE IMAGE HAS CHANGED
 		go func() {
 			for {
 				select {
@@ -320,6 +347,26 @@ func getImage(id string) (image.Image, error) {
 	}
 }
 
+func checkConnected() bool {
+	res, err := http.Get(API_ENDPOINT)
+
+	if err != nil {
+		if DEBUG {
+			log.Printf("Connection check error: %#v", err)
+		}
+		return false
+	}
+
+	if res.StatusCode > 300 {
+		if DEBUG {
+			log.Printf("Connection check HTTP %d: %#v", res.StatusCode, res)
+		}
+		return false
+	}
+
+	return true
+}
+
 // Decode GIF or JPEG image given a mimeType
 func decodeImage(data io.Reader, mimeType string) (image.Image, error) {
 	switch mimeType {
@@ -363,7 +410,9 @@ func displayImage(image image.Image, epd *epd7in5v2.Epd) {
 	}
 	epd.Init()
 
-	log.Println("-> Displaying")
+	if DEBUG {
+		log.Println("-> Displaying")
+	}
 	epd.Display(epd.Convert(image))
 
 	if DEBUG {
@@ -390,7 +439,9 @@ func displayClear(epd *epd7in5v2.Epd) {
 	}
 	epd.Init()
 
-	log.Println("-> Clear")
+	if DEBUG {
+		log.Println("-> Clear")
+	}
 	epd.Clear()
 
 	if DEBUG {

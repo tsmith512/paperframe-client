@@ -235,21 +235,19 @@ func (e *Epd) sendData2(data []byte) {
 
 // Pause until display is ready. NB: busy pin is _high_ when idle!
 func (e *Epd) waitUntilIdle() {
-	log.Println("     - Waiting for idle")
-
 	for e.busy.Read() == gpio.Low {
-		log.Println("       Still waiting...")
+		log.Println("Still waiting for idle...")
 		time.Sleep(1000 * time.Millisecond)
 	}
 }
 
 // Init and power on display from sleep.
 func (e *Epd) Init() {
-	log.Println("   - Reset")
+	// log.Println("   - Reset")
 	e.Reset()
 	e.waitUntilIdle()
 
-	log.Println("   - Send Power Settings")
+	// log.Println("   - Send Power Settings")
 	e.sendCommand(POWER_SETTING)
 	e.sendData(0x17)                     // 1-0=11 internal power
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[6]) // VGH&VGL
@@ -258,12 +256,12 @@ func (e *Epd) Init() {
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[3]) // VSHR
 	e.waitUntilIdle()
 
-	log.Println("   - VCM DC")
+	// log.Println("   - VCM DC")
 	e.sendCommand(VCM_DC_SETTING)
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[0])
 	e.waitUntilIdle()
 
-	log.Println("   - Booster Soft Start")
+	// log.Println("   - Booster Soft Start")
 	e.sendCommand(BOOSTER_SOFT_START)
 	e.sendData(0x27)
 	e.sendData(0x27)
@@ -271,18 +269,18 @@ func (e *Epd) Init() {
 	e.sendData(0x17)
 	e.waitUntilIdle()
 
-	log.Println("   - PLL Control")
+	// log.Println("   - PLL Control")
 	e.sendCommand(PLL_CONTROL)
 	// Python example called 0x30 "OSC Setting" but it is the PLL clock freq.
 	e.sendData(VOLTAGE_FRAME_7IN5_V2[0]) // 0110 = 50Hz.
 	e.waitUntilIdle()
 
-	log.Println("   - Display Power On")
+	// log.Println("   - Display Power On")
 	e.sendCommand(POWER_ON)
 	time.Sleep(100 * time.Millisecond)
 	e.waitUntilIdle()
 
-	log.Println("   - Panel Setting")
+	// log.Println("   - Panel Setting")
 	e.sendCommand(PANEL_SETTING)
 	e.sendData(0x1F)
 	// 0 0 0 1 1 1 1 1
@@ -291,7 +289,7 @@ func (e *Epd) Init() {
 	//         * * * * Default values
 	e.waitUntilIdle()
 
-	log.Println("   - Resolution Setting")
+	// log.Println("   - Resolution Setting")
 	e.sendCommand(TCON_RESOLUTION)
 	e.sendData(0x03)
 	e.sendData(0x20)
@@ -300,24 +298,24 @@ func (e *Epd) Init() {
 	// Not sure how 800x480 is encoded described in this.
 	e.waitUntilIdle()
 
-	log.Println("   - Set Dual SPI Mode")
+	// log.Println("   - Set Dual SPI Mode")
 	e.sendCommand(DUAL_SPI_MODE)
 	e.sendData(0x00)
 	// Set as DISABLED
 	e.waitUntilIdle()
 
-	log.Println("   - VCOM and DATA")
+	// log.Println("   - VCOM and DATA")
 	e.sendCommand(VCOM_AND_DATA_INTERVAL_SETTING)
 	e.sendData(0x10)
 	e.sendData(0x07)
 	e.waitUntilIdle()
 
-	log.Println("   - TCON Setting")
+	// log.Println("   - TCON Setting")
 	e.sendCommand(TCON_SETTING)
 	e.sendData(0x22)
 	e.waitUntilIdle()
 
-	log.Println("   - Gate/Source Start Setting")
+	// log.Println("   - Gate/Source Start Setting")
 	e.sendCommand(SPI_FLASH_CONTROL) // But Python called 0x65 "Resolution setting"
 	// And yes, this is exactly what the Python did, with the comment on the 2nd line
 	// I think this is related to rotation...
@@ -326,7 +324,7 @@ func (e *Epd) Init() {
 	e.sendData(0x00)
 	e.sendData(0x00)
 	e.waitUntilIdle()
-	log.Println("   Init Complete")
+	// log.Println("   Init Complete")
 }
 
 // Clears the screen to white.

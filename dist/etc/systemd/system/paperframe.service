@@ -2,10 +2,12 @@
 Description=Paperframe Service
 After=raspi-config.service
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=exec
-ExecStart=/home/paperframe/paperframe service
+ExecStart=/bin/paperframe service
 RemainAfterExit=no
 SuccessExitStatus=0
 Restart=on-failure
